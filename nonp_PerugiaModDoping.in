@@ -1,0 +1,110 @@
+# n-on-p Diode with bulk concentration dependent on fluence as in: #
+# https://doi.org/10.1016/j.nima.2022.167180, eq. (1)
+
+# fluence
+set fluence = 0
+
+# Example Name
+Set name="nonp" 
+
+####### DEVICE SIMULATION #######
+GO victoryprocess simflags="-P 4"
+
+###### DIODE CHARACTERISTICS #######
+set PITCH = 20
+set HALF_PITCH = ${PITCH}/2.0
+set THICKNESS = 50
+
+set INIT_RESOLUTION = 0.5
+
+set OXIDE_THICKESS = 1
+
+#### FLUENCE DEPENDENT BULK DOPING ####
+set BULK_DOP_CONC_0 = 5e12
+if cond=($fluence>0)
+  if cond=($fluence>3e15)
+    set BULK_DOP_CONC = 4.17e13*log($fluence)-1.41e15
+  else
+    set BULK_DOP_CONC = BULK_DOP_CONC_0 + 0.0237*${fluence} 
+  if.end
+else
+  set BULK_DOP_CONC = BULK_DOP_CONC_0 
+if.end
+
+set BACK_DOP_PEAK_CONC = 1e19
+set BACK_DOP_PROFILE = "erf"
+set BACK_DOP_BOXSIZE = 0.1
+set BACK_DOP_K = 4
+set BACK_DOP_LAT = 0.25
+set BACK_DOP_PROFILE_FILE = "backside_erf_doping.dat"
+
+set PIXEL_DOP_PEAK_CONC = 2e19
+set PIXEL_DOP_PROFILE = "gaussian"
+set PIXEL_DOP_CHARACT = 0.362717
+set PIXEL_DOP_LAT = 0.8*${PIXEL_DOP_CHARACT}
+set PIXEL_DOP_WINDOW = 3
+set PIXEL_HALF_DOP_WINDOW = ${PIXEL_DOP_WINDOW}/2.0
+
+set METAL_OVERHANG = 1.5
+set METAL_THICKNESS = 0.2
+set METAL_RIGHTMOST = ${PIXEL_HALF_DOP_WINDOW}+${METAL_OVERHANG}
+
+Init  material=silicon c.boron=${BULK_DOP_CONC} orientation=100 \
+from=0 to=${HALF_PITCH} \
+FLOW.DIM=2D depth=${THICKNESS} gasheight=5 resolution=${INIT_RESOLUTION} FLIP
+
+#### STRUCTURE SPECIFICATION ####
+# Mesh Definition
+
+Line x location=0 spacing=1
+Line x location=${HALF_PITCH} spacing=1
+
+Line y location=0.00 spacing=2
+Line y location=${THICKNESS} spacing=2
+
+
+#.... ETCH OXIDE
+#etch dry material=oxide thick= ${OXIDE_THICKESS} left.to.x=${PIXEL_HALF_DOP_WINDOW}
+
+
+#.... BACKIDE DOPING 
+PROFILE INFILE=${BACK_DOP_PROFILE_FILE} boron
+
+
+#DOPING BORON PEAK=${THICKNESS} conc=${BACK_DOP_PEAK_CONC} \
+#error.boxsize=${BACK_DOP_BOXSIZE} error.k=${BACK_DOP_K} \
+#lateral.sigma=${BACK_DOP_LAT} 
+
+
+#..... MASKING FOR PIXEL DOPING
+MASK OUTSIDE.X="0, ${PIXEL_HALF_DOP_WINDOW}"
+
+
+#.... PIXEL DOPING
+DOPING phosphorus PEAK=0.0 conc=${PIXEL_DOP_PEAK_CONC} \
+gauss.sigma=${PIXEL_DOP_CHARACT} lateral.sigma=${PIXEL_DOP_LAT} 
+strip barrier
+
+#.... OXIDE DEPOSITION
+deposit max material=oxide thick= ${OXIDE_THICKESS} right.to.x=${PIXEL_HALF_DOP_WINDOW}
+
+
+#.... METAL DEPOSITION
+deposit conformal material=aluminum thick= ${METAL_THICKNESS} \ 
+left.to.x=${METAL_RIGHTMOST}
+
+flip
+deposit conformal material=aluminum thick= ${METAL_THICKNESS}
+flip
+
+#.... ELECTRICAL CONTACTS
+ELECTRODE name=PIX x=0 y=0
+ELECTRODE name=HV substrate
+
+MIRROR mirror="-x"
+ 
+save name=$'name'_VP  conformalstr
+victoryvisual $'name'_VP_exVC.str
+quit
+
+
